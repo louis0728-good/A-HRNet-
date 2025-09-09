@@ -10,6 +10,40 @@ def process(input_path, output_path):
     mp_pose = mp.solutions.pose
     mp_drawing = mp.solutions.drawing_utils
 
+    # 受不了了，MP 的點太多太亂了，我決定使用鍵值法去將 MP -> COCO 點，
+    # 這樣輸出只會有 COCO 的點位，更好讓我們
+    MP_TO_COCO = {
+        0: ("nose", 0),         # 鼻子
+        2: ("left_eye", 1),     # 左眼
+        5: ("right_eye", 2),    # 右眼
+        7: ("left_ear", 3),     # 左耳
+        8: ("right_ear", 4),    # 右耳
+        11: ("left_shoulder", 5),  # 左肩
+        12: ("right_shoulder", 6), # 右肩
+        13: ("left_elbow", 7),     # 左肘
+        14: ("right_elbow", 8),    # 右肘
+        15: ("left_wrist", 9),     # 左腕
+        16: ("right_wrist", 10),   # 右腕
+        23: ("left_hip", 11),      # 左髖
+        24: ("right_hip", 12),     # 右髖
+        25: ("left_knee", 13),     # 左膝
+        26: ("right_knee", 14),    # 右膝
+        27: ("left_ankle", 15),    # 左踝
+        28: ("right_ankle", 16)    # 右踝
+    }
+
+    COCO_SKELETON = [
+        (0, 1), (0, 2),  # 鼻子到眼睛
+        (1, 3), (2, 4),  # 眼睛到耳朵  
+        (5, 6),          # 肩膀之間
+        (5, 7), (7, 9),  # 左手臂
+        (6, 8), (8, 10), # 右手臂
+        (5, 11), (6, 12),# 肩膀到髖部
+        (11, 12),        # 髖部之間
+        (11, 13), (13, 15), # 左腿
+        (12, 14), (14, 16)  # 右腿
+    ]
+
     frame_interval = 10 # 每 30 幀取一次
     video_name = os.path.basename(input_path).replace('.mp4', '')
     frame_output = os.path.join(r"D:\rcnn\PyTorch-Object-Detection-Faster-RCNN-Tutorial\output_videos\mp_keypoints",
@@ -126,6 +160,8 @@ def process(input_path, output_path):
                 )
             )
             """
+
+            """
             mp_drawing.draw_landmarks(
                 skeleton_frame,
                 res.pose_landmarks,
@@ -161,7 +197,56 @@ def process(input_path, output_path):
                            cv2.FONT_HERSHEY_SIMPLEX,
                            0.3,  # 字體大小
                            color, 1)
+            """
+            
+            for c in COCO_SKELETON:
+                c_id1, c_id2 = c
+                mp_id1 = None
+                mp_id2 = None
+                for mp_id, (name, coco_id) in MP_TO_COCO.items():
+                    if coco_id == c_id1:
+                        mp_id1 = mp_id
+                    if coco_id == c_id2:
+                        mp_id2 = mp_id
+
+                if mp_id1 is not None and mp_id2 is not None:
+                    lm1 = res.pose_landmarks.landmark[mp_id1]
+                    lm2 = res.pose_landmarks.landmark[mp_id2]
+                    
+                    x1 = int(lm1.x * w)
+                    y1 = int(lm1.y * h)
+                    x2 = int(lm2.x * w)
+                    y2 = int(lm2.y * h)
+                    
+                    # 畫連線
+                    cv2.line(skeleton_frame, (x1, y1), (x2, y2), (0, 0, 0), 1)
+
+            for mp_id, (name, coco_id) in MP_TO_COCO.items():
+                landmark = res.pose_landmarks.landmark[mp_id]
+                # 計算像素座標，因為 mp 預設是標準化，我們需要乘 寬、高 來讓它變成實際位置
+                x = int(landmark.x * w)
+                y = int(landmark.y * h)
+                visibility = landmark.visibility
                 
+                # 根據信心度決定顏色
+                if visibility > 0.8:
+                    color = (0, 255, 0)  # 綠色
+                elif visibility >= 0.5:
+                    color = (0, 165, 255)  # 深橘色
+                else:
+                    color = (0, 0, 255)  # 紅色
+                
+                # 畫關節點
+                cv2.circle(skeleton_frame, (x, y), 3, color, -1)
+                
+                # 顯示信心度分數
+                cv2.putText(skeleton_frame, 
+                           f"{visibility:.2f}", 
+                           (x + 5, y - 5),  # 偏右上移一點避免遮擋
+                           cv2.FONT_HERSHEY_SIMPLEX,
+                           0.3,  # 字體大小
+                           color, 1)
+
         else:
             cv2.putText(skeleton_frame, "未偵測到人物", (10, 30),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
